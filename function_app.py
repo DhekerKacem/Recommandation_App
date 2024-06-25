@@ -1,36 +1,49 @@
-import azure.functions as func
 import logging
+import azure.functions as func
 import pickle
 import os
-from surprise import dataset
+import json
+import numpy as np
 
 app = func.FunctionApp()
+# Définir le chemin d'accès pour le modèle et les données
+model_path = os.path.join('azure_collaborative', 'model_COFI.pkl')
+data_path = os.path.join('azure_collaborative', 'ratings.pkl')
+
+# Charger le modèle depuis le fichier
+with open(model_path, 'rb') as f:
+    loaded_model = pickle.load(f)
+
+# Charger les données de notations
+with open(data_path, 'rb') as data_file:
+    ratings = pickle.load(data_file)
 
 @app.route(route="recommandation_api", auth_level=func.AuthLevel.ANONYMOUS)
 def RecommanderApi(req: func.HttpRequest) -> func.HttpResponse:
     logging.info('Python HTTP trigger function processed a request.')
 
-    # Définir le chemin d'accès
-    path = os.path.join('azure_collaborative', 'model_COFI.pkl')
-
-    # Charger le modèle depuis le fichier
-    with open(path, 'rb') as f:
-        loaded_model = pickle.load(f)
-
-    # Chemins relatifs aux fichiers de données et de modèle
-    data_path = os.path.join('azure_collaborative', 'ratings.pkl')
-
-    # Charger les données de notations
-    with open(data_path, 'rb') as data_file:
-        ratings = pickle.load(data_file)
+    
 
     # Obtenir les recommandations pour un utilisateur spécifique
-    user_id = req.params.get("user-id")
+    user_id = req.params.get("user_id")
+    if not user_id:
+        return func.HttpResponse(
+            "Veuillez passer un user_id en paramètre.",
+            status_code=400
+        )
+
+    user_id = int(user_id)
     recommended_articles = recommend_articles(user_id, loaded_model, ratings)
     
-    print(f"Articles recommandés pour l'utilisateur {user_id}: {recommended_articles}")
+    # Convertir les valeurs int64 en int
+    recommended_articles = [int(article_id) for article_id in recommended_articles]
+
+    logging.info(f"Articles recommandés pour l'utilisateur {user_id}: {recommended_articles}")
+
     return func.HttpResponse(
-        recommend_articles, status_code=200
+        body=json.dumps(recommended_articles),
+        mimetype="application/json",
+        status_code=200
     )
     
 # Exemple de fonction pour faire des recommandations
